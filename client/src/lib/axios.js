@@ -1,47 +1,79 @@
 import axios from 'axios'
 
-// Central axios instance — all API calls go through here
-// Base URL points to our Express backend
+/**
+ * Axios instance with JWT interceptors.
+ *
+ * Request interceptor:  reads token from Zustand store → adds to header
+ * Response interceptor: on 401 → calls /auth/refresh → retries original request
+ *
+ * WHY NOT useAuthStore directly here:
+ * Circular import risk (store imports api, api imports store).
+ * Solution: read from the store's getState() directly — no hook needed outside React.
+ */
+
 const api = axios.create({
   baseURL: '/api',
-  withCredentials: true, // needed for refresh token cookie
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  withCredentials: true, // sends httpOnly refresh token cookie automatically
+  headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor — attach access token to every request
+// Request interceptor — attach current access token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    // Read from Zustand persisted storage directly (avoids circular import)
+    try {
+      const stored = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+      const token = stored?.state?.accessToken
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+    } catch {
+      // localStorage unavailable — skip token attachment
     }
     return config
   },
   (error) => Promise.reject(error)
 )
 
-// Response interceptor — handle 401s with token refresh
+// Response interceptor — silent token refresh on 401
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
 
-    // If 401 and we haven't already retried, attempt refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Only retry once, only on 401, not on the refresh endpoint itself
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/refresh')
+    ) {
       originalRequest._retry = true
 
       try {
-        const { data } = await axios.post('/api/auth/refresh', {}, { withCredentials: true })
-        localStorage.setItem('accessToken', data.accessToken)
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`
+        // Refresh token is in httpOnly cookie — browser sends it automatically
+        const { data } = await axios.post(
+          '/api/auth/refresh',
+          {},
+          { withCredentials: true }
+        )
+
+        const newToken = data.data?.accessToken
+
+        // Update Zustand store with new token
+        if (newToken) {
+          const stored = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+          if (stored?.state) {
+            stored.state.accessToken = newToken
+            localStorage.setItem('auth-storage', JSON.stringify(stored))
+          }
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+        }
+
         return api(originalRequest)
-      } catch (refreshError) {
-        // Refresh failed — clear tokens and redirect to login
-        localStorage.removeItem('accessToken')
+      } catch {
+        // Refresh failed — clear auth and redirect
+        localStorage.removeItem('auth-storage')
         window.location.href = '/login'
-        return Promise.reject(refreshError)
       }
     }
 

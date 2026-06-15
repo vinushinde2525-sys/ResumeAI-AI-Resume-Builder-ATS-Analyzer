@@ -1,101 +1,97 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from './authStore'
 import Spinner from '../components/ui/Spinner'
+import Navbar from '../components/layout/Navbar'
 
-// Lazy load pages for code splitting
-// Each page only loads when the user navigates to it
-const LandingPage = lazy(() => import('../pages/LandingPage'))
-const LoginPage = lazy(() => import('../features/auth/pages/LoginPage'))
-const RegisterPage = lazy(() => import('../features/auth/pages/RegisterPage'))
-const DashboardPage = lazy(() => import('../features/dashboard/pages/DashboardPage'))
-const ResumePage = lazy(() => import('../features/resume/pages/ResumePage'))
-const ResumeListPage = lazy(() => import('../features/resume/pages/ResumeListPage'))
-const ATSAnalyzerPage = lazy(() => import('../features/ats/pages/ATSAnalyzerPage'))
-const AIAssistantPage = lazy(() => import('../features/ai/pages/AIAssistantPage'))
-const NotFoundPage = lazy(() => import('../pages/NotFoundPage'))
+// Lazy load every page — code splitting per route
+const LandingPage      = lazy(() => import('../pages/LandingPage'))
+const LoginPage        = lazy(() => import('../features/auth/pages/LoginPage'))
+const RegisterPage     = lazy(() => import('../features/auth/pages/RegisterPage'))
+const DashboardPage    = lazy(() => import('../features/dashboard/pages/DashboardPage'))
+const ResumePage       = lazy(() => import('../features/resume/pages/ResumePage'))
+const ResumeListPage   = lazy(() => import('../features/resume/pages/ResumeListPage'))
+const ATSAnalyzerPage  = lazy(() => import('../features/ats/pages/ATSAnalyzerPage'))
+const AIAssistantPage  = lazy(() => import('../features/ai/pages/AIAssistantPage'))
+const NotFoundPage     = lazy(() => import('../pages/NotFoundPage'))
 
-// Page loading fallback
 const PageLoader = () => (
-  <div className="flex h-screen items-center justify-center">
+  <div className="flex h-screen items-center justify-center bg-slate-50">
     <Spinner size="lg" />
   </div>
 )
 
-// Wrap lazy pages in Suspense
-const withSuspense = (Component) => (
-  <Suspense fallback={<PageLoader />}>
-    <Component />
-  </Suspense>
-)
-
-// Guard — redirects to /login if not authenticated
-const ProtectedRoute = ({ children }) => {
+// Authenticated layout — Navbar + page
+const AppShell = () => {
   const isAuth = useAuthStore((s) => s.isAuth)
-  return isAuth ? children : <Navigate to="/login" replace />
+  if (!isAuth) return <Navigate to="/login" replace />
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar />
+      <Suspense fallback={<PageLoader />}>
+        <Outlet />
+      </Suspense>
+    </div>
+  )
 }
 
-// Guard — redirects authenticated users away from auth pages
-const PublicOnlyRoute = ({ children }) => {
+// Public-only guard — redirect logged-in users to dashboard
+const PublicOnly = ({ children }) => {
   const isAuth = useAuthStore((s) => s.isAuth)
   return isAuth ? <Navigate to="/dashboard" replace /> : children
 }
 
 export const router = createBrowserRouter([
+  // Public routes
   {
     path: '/',
-    element: withSuspense(LandingPage),
+    element: (
+      <Suspense fallback={<PageLoader />}>
+        <LandingPage />
+      </Suspense>
+    ),
   },
   {
     path: '/login',
     element: (
-      <PublicOnlyRoute>{withSuspense(LoginPage)}</PublicOnlyRoute>
+      <PublicOnly>
+        <Suspense fallback={<PageLoader />}>
+          <LoginPage />
+        </Suspense>
+      </PublicOnly>
     ),
   },
   {
     path: '/register',
     element: (
-      <PublicOnlyRoute>{withSuspense(RegisterPage)}</PublicOnlyRoute>
+      <PublicOnly>
+        <Suspense fallback={<PageLoader />}>
+          <RegisterPage />
+        </Suspense>
+      </PublicOnly>
     ),
   },
+
+  // Authenticated layout — all children get Navbar automatically
   {
-    path: '/dashboard',
-    element: (
-      <ProtectedRoute>{withSuspense(DashboardPage)}</ProtectedRoute>
-    ),
+    element: <AppShell />,
+    children: [
+      { path: '/dashboard',   element: <DashboardPage /> },
+      { path: '/resumes',     element: <ResumeListPage /> },
+      { path: '/resumes/new', element: <ResumePage /> },
+      { path: '/resumes/:id', element: <ResumePage /> },
+      { path: '/ats',         element: <ATSAnalyzerPage /> },
+      { path: '/ai',          element: <AIAssistantPage /> },
+    ],
   },
-  {
-    path: '/resumes',
-    element: (
-      <ProtectedRoute>{withSuspense(ResumeListPage)}</ProtectedRoute>
-    ),
-  },
-  {
-    path: '/resumes/new',
-    element: (
-      <ProtectedRoute>{withSuspense(ResumePage)}</ProtectedRoute>
-    ),
-  },
-  {
-    path: '/resumes/:id',
-    element: (
-      <ProtectedRoute>{withSuspense(ResumePage)}</ProtectedRoute>
-    ),
-  },
-  {
-    path: '/ats',
-    element: (
-      <ProtectedRoute>{withSuspense(ATSAnalyzerPage)}</ProtectedRoute>
-    ),
-  },
-  {
-    path: '/ai',
-    element: (
-      <ProtectedRoute>{withSuspense(AIAssistantPage)}</ProtectedRoute>
-    ),
-  },
+
+  // 404
   {
     path: '*',
-    element: withSuspense(NotFoundPage),
+    element: (
+      <Suspense fallback={<PageLoader />}>
+        <NotFoundPage />
+      </Suspense>
+    ),
   },
 ])

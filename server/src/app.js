@@ -3,6 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import cookieParser from 'cookie-parser'
+import authRoutes from './features/auth/auth.routes.js'
 import { env } from './config/env.js'
 import { apiLimiter } from './shared/middleware/rateLimiter.js'
 import errorHandler from './shared/middleware/errorHandler.js'
@@ -43,8 +44,8 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-// Feature routes (registered here as features are built)
-// app.use('/api/auth', authRoutes)       ← Phase B
+// Feature routes
+app.use('/api/auth', authRoutes)
 // app.use('/api/resumes', resumeRoutes)  ← Phase C
 // app.use('/api/ai', aiRoutes)           ← Phase E
 // app.use('/api/ats', atsRoutes)         ← Phase F

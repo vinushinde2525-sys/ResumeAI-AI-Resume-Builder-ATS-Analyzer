@@ -253,3 +253,86 @@ Key topics I can explain from this project:
 ## License
 
 MIT — built by Vinu Shinde as a portfolio project.
+
+
+---
+
+## Authentication (Phase B)
+
+### Architecture
+
+```
+Client                          Server
+──────                          ──────
+Register/Login form
+  → POST /api/auth/register     Validate (Zod)
+  → POST /api/auth/login        Hash check (bcrypt)
+                                Sign accessToken (15min, jti)
+                                Sign refreshToken (7d, jti)
+  ← { user, accessToken }       Set refreshToken in httpOnly cookie
+  → Zustand.setAuth()
+  → Navigate /dashboard
+
+Every API request:
+  Axios interceptor              Bearer {accessToken} header
+  → 401 received?
+  → POST /api/auth/refresh       Read cookie (httpOnly, auto-sent)
+                                Verify + rotate refresh token
+  ← { accessToken: newToken }
+  → Retry original request
+
+Logout:
+  POST /api/auth/logout          Clear refreshToken in DB
+  → Zustand.clearAuth()          Clear cookie
+  → Navigate /
+```
+
+### Security Decisions
+
+| Decision | Why |
+|---|---|
+| Access token in Zustand (memory) | Survives page refresh via persist; not in its own localStorage key so harder to target |
+| Refresh token in httpOnly cookie | JS cannot read it at all — XSS proof |
+| `jti` claim on every token | Prevents identical tokens when signed in same second; enables future blacklisting |
+| bcrypt cost factor 12 | Balances security vs server load; ~300ms hash time |
+| Same error for bad email/password | Prevents email enumeration attacks |
+| Refresh token rotation | Stolen refresh token detected on next legitimate use |
+| Reuse detection clears session | Attacker using stolen token forces full re-login |
+| `select: false` on password/refreshToken | Never accidentally returned in DB queries |
+
+### API Endpoints
+
+```
+POST /api/auth/register
+  Body: { name, email, password }
+  Returns: { user, accessToken }
+  Cookie: refreshToken (httpOnly)
+
+POST /api/auth/login
+  Body: { email, password }
+  Returns: { user, accessToken }
+  Cookie: refreshToken (httpOnly)
+
+POST /api/auth/refresh
+  Cookie: refreshToken (auto-sent)
+  Returns: { user, accessToken }
+  Cookie: new refreshToken (rotated)
+
+POST /api/auth/logout   [Protected]
+  Clears DB refreshToken + cookie
+
+GET /api/auth/me        [Protected]
+  Returns: { user }
+```
+
+### Interview Talking Points
+
+1. **Why two tokens?** Access token is short-lived (15min) — limits exposure window if stolen. Refresh token is long-lived but stored in httpOnly cookie JS can't read.
+
+2. **Why jti?** JWT iat is second-precision. Two tokens for same user in same second = identical tokens. jti = crypto.randomUUID() guarantees uniqueness and enables future blacklisting.
+
+3. **Why bcrypt cost 12?** Each increment doubles compute time. Cost 12 ≈ 300ms — painful for attackers (millions of attempts), acceptable for users (one login).
+
+4. **How does refresh rotation work?** On every refresh, old token is replaced with a new one. If someone reuses the old token, it no longer matches what's in DB → attack detected → session cleared → attacker locked out.
+
+5. **Why same error for wrong email/wrong password?** If we said "email not found" vs "wrong password" separately, attackers could enumerate valid emails.

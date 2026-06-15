@@ -9,35 +9,44 @@ import { persist } from 'zustand/middleware'
  * - Persist middleware auto-syncs to localStorage
  * - Dead simple API: get, set, subscribe
  * - No Provider wrapping needed
- * - Perfect for interview demos — easy to explain
  *
- * State shape:
- *   user        — the logged-in user object (or null)
- *   accessToken — JWT access token (short-lived, ~15min)
- *   isAuth      — boolean derived from user presence
+ * Security model:
+ *   accessToken → Zustand (in-memory + localStorage)
+ *   refreshToken → httpOnly cookie (server-set, JS cannot read)
  *
- * The refresh token lives in an httpOnly cookie (server-set).
- * We never store it in JS — that's the security win.
+ * The refresh token is NEVER stored in JS.
+ * It lives in a cookie the browser sends automatically.
  */
 export const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       accessToken: null,
       isAuth: false,
 
+      // Called after successful login or register
       setAuth: (user, accessToken) =>
         set({ user, accessToken, isAuth: true }),
 
+      // Update user profile fields without full re-auth
       updateUser: (updates) =>
-        set((state) => ({ user: { ...state.user, ...updates } })),
+        set((state) => ({
+          user: state.user ? { ...state.user, ...updates } : null,
+        })),
 
+      // Update access token (called by axios refresh interceptor)
+      setAccessToken: (accessToken) =>
+        set({ accessToken }),
+
+      // Clear everything on logout
       clearAuth: () =>
         set({ user: null, accessToken: null, isAuth: false }),
+
+      // Getter for axios interceptor (avoids stale closure)
+      getAccessToken: () => get().accessToken,
     }),
     {
       name: 'auth-storage',
-      // Only persist user + token — not derived booleans
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

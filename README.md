@@ -336,3 +336,123 @@ GET /api/auth/me        [Protected]
 4. **How does refresh rotation work?** On every refresh, old token is replaced with a new one. If someone reuses the old token, it no longer matches what's in DB → attack detected → session cleared → attacker locked out.
 
 5. **Why same error for wrong email/wrong password?** If we said "email not found" vs "wrong password" separately, attackers could enumerate valid emails.
+
+
+---
+
+## UI System (Phase D)
+
+### Design Principles
+
+| Principle | Implementation |
+|---|---|
+| Minimalistic | Slate color palette, generous whitespace, no decorative noise |
+| Premium feel | Soft shadows, rounded-2xl corners, subtle backdrop blur |
+| Motion | Framer Motion: fade+slide page entrances, spring nav indicator, hover lift |
+| Typography | Inter font, tight tracking on headings, relaxed body copy |
+| Responsive | Mobile hamburger menu, stacked → grid layouts at sm/lg breakpoints |
+
+### Component Library
+
+| Component | File | Purpose |
+|---|---|---|
+| Button | `components/ui/Button.jsx` | 5 variants, 3 sizes, loading state, icon support |
+| Card | `components/ui/Card.jsx` | Surface with soft shadow, Header/Title/Body sub-components |
+| Input | `components/ui/Input.jsx` | Labeled input with error state |
+| Badge | `components/ui/Badge.jsx` | Status chips — default, brand, accent, success, warning, danger |
+| Modal | `components/ui/Modal.jsx` | Animated dialog, Escape key, backdrop click, scroll lock |
+| Spinner | `components/ui/Spinner.jsx` | Loading indicator, 3 sizes |
+| Skeleton | `components/ui/Skeleton.jsx` | Pulse loader with ResumeCard preset |
+| Navbar | `components/layout/Navbar.jsx` | Sticky header, spring nav indicator, mobile menu |
+| PageWrapper | `components/layout/PageWrapper.jsx` | Fade+slide page transition |
+
+### Landing Page Sections
+
+1. **Navbar** — sticky, logo + nav links + auth CTAs
+2. **Hero** — headline with animated underline, gradient orb, dual CTAs
+3. **Features** — 3-column cards with hover lift
+4. **How It Works** — 4-step process with connector lines
+5. **CTA** — brand-600 background, contrast button
+6. **Footer** — logo, credits, security note
+
+
+---
+
+## AI Assistant (Phase E)
+
+### Architecture — Provider Abstraction (Adapter Pattern)
+
+```
+Client                  Server
+──────                  ──────
+AI Tool Card
+  → useAI hook (TanStack useMutation)
+  → POST /api/ai/{feature}
+
+                        Route: protect + rate limit (30/hr) + Zod validate
+                        Controller: extract body, call service, handle errors
+                        Service: select prompt, call provider, parse response
+                        ProviderFactory: reads AI_PROVIDER env var
+                          ↓
+                        ┌─────────────┬─────────────┬─────────────┐
+                        │   OpenAI    │   Claude    │   Gemini    │
+                        │ provider.js │ provider.js │ provider.js │
+                        └─────────────┴─────────────┴─────────────┘
+                        All implement: { call(system, user, opts), name }
+
+← { result, provider }
+Toast + AIResultPanel display
+```
+
+### Why This Design
+
+| Decision | Reasoning |
+|---|---|
+| Adapter pattern via factory | Each provider has a different API (auth header, request shape, response shape). Factory normalises to one interface: `call(system, user, options)`. |
+| `AI_PROVIDER` env var (server-side) | API keys never reach the browser. Switching providers is a deployment decision, not a client toggle — prevents cost abuse. |
+| Raw `fetch()`, no SDKs | Keeps the abstraction simple and portable. Each provider file is ~50 lines — easy to read and extend. |
+| Prompts centralised in `ai.prompts.js` | Prompts are business logic, like SQL queries. Easy to iterate without touching service code. |
+| Zod validation before AI call | Rejects bad input before spending API credits. A 10-character minimum on summary, for example, blocks near-empty submissions. |
+| `useMutation` not `useQuery` | AI calls are user-triggered, expensive, and shouldn't auto-refetch or cache silently. |
+
+### Adding a New Provider
+
+```js
+// 1. Create server/src/features/ai/providers/mistral.provider.js
+export const mistralProvider = { call: async (system, user, opts) => { /* ... */ }, name: 'mistral' }
+
+// 2. Register in providerFactory.js
+const PROVIDERS = { openai, claude, gemini, mistral: mistralProvider }
+
+// 3. Set AI_PROVIDER=mistral in .env — done. Zero other changes.
+```
+
+### AI Features
+
+| Feature | Endpoint | Input | Output |
+|---|---|---|---|
+| Summary Improver | `POST /api/ai/summary` | currentSummary, jobTitle | Improved summary (text) |
+| Bullet Rewriter | `POST /api/ai/bullet` | bullet, role | Stronger bullet (text) |
+| Skills Generator | `POST /api/ai/skills` | jobTitle, existingSkills | `{ technical: [], soft: [] }` |
+| Project Description | `POST /api/ai/project-desc` | projectTitle, technologies, description | Bullet points (text) |
+| Resume Feedback | `POST /api/ai/feedback` | resumeData (full object) | `{ overallScore, strengths[], improvements[], missingElements[], topRecommendation }` |
+
+### Security
+
+- All AI routes require valid JWT (`protect` middleware)
+- Rate limited to 30 requests/hour per IP (`aiLimiter`)
+- All inputs validated server-side with Zod before reaching the provider
+- API keys live only in server `.env`, never sent to client
+- Markdown code-fence stripping + JSON parse fallback for malformed AI responses
+
+### Interview Talking Points
+
+1. **Why the Adapter pattern?** Each AI provider (OpenAI, Claude, Gemini) has incompatible APIs — different auth headers, request bodies, response shapes. The adapter normalises them to one interface so the service layer never needs to know which provider is active.
+
+2. **Why server-side provider selection?** If the client chose the provider, you'd need per-request API key routing and the client could force expensive calls. Server-side `AI_PROVIDER` env var keeps it a deployment concern.
+
+3. **How do you handle a provider returning malformed JSON?** The service tries `JSON.parse()` after stripping markdown fences; on failure it falls back to a safe default shape so the UI never crashes.
+
+4. **Why validate with Zod before calling the AI?** AI calls cost money and time. Rejecting a 3-character "summary" before it reaches OpenAI saves cost and gives the user instant feedback.
+
+5. **How would you add response caching?** Add a cache key from a hash of (feature, input) → check TanStack Query staleTime client-side, or Redis server-side for identical repeated requests.

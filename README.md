@@ -456,3 +456,68 @@ const PROVIDERS = { openai, claude, gemini, mistral: mistralProvider }
 4. **Why validate with Zod before calling the AI?** AI calls cost money and time. Rejecting a 3-character "summary" before it reaches OpenAI saves cost and gives the user instant feedback.
 
 5. **How would you add response caching?** Add a cache key from a hash of (feature, input) → check TanStack Query staleTime client-side, or Redis server-side for identical repeated requests.
+
+
+---
+
+## ATS Analyzer (Phase F)
+
+### Architecture — Deterministic, Rule-Based Scoring
+
+```
+ATSAnalyzerPage
+  → select saved resume + optional job description
+  → useAnalyzeResume().mutate({ resumeData, jobDescription })
+  → POST /api/ats/analyze
+      → protect + rate limit + Zod validate
+      → ats.controller.analyze
+      → ats.service.analyzeResume(resumeData, jobDescription)
+          ├── scoreKeywords()      → word-boundary keyword matching
+          ├── scoreFormatting()    → contact completeness, date consistency
+          ├── scoreReadability()   → action verb ratio, bullet length, weak phrases
+          ├── scoreCompleteness()  → missing section detection
+          └── compareJobDescription() → keyword overlap % (if JD provided)
+      → weighted overall score (30% keyword, 20% formatting, 20% readability, 30% completeness)
+  ← { overallScore, keywordScore, formattingScore, readabilityScore,
+      completenessScore, missingKeywords, missingSkills, weakActionVerbs,
+      formattingSuggestions, improvementSuggestions, jdMatch }
+  → ATSScoreCard (circular gauge) + ATSCategoryBreakdown (bars)
+    + MissingKeywordsCard (pills) + SuggestionsCard (prioritized list)
+```
+
+### Why Rule-Based, Not AI
+
+| Reason | Detail |
+|---|---|
+| Explainable | Every point deducted traces to a concrete rule (e.g. "missing email: -15") |
+| Deterministic | Same resume always produces the same score — verified by automated test |
+| Free | Zero API cost per analysis — runs in milliseconds |
+| Realistic | Most commercial ATS systems are keyword/structure parsers, not LLMs |
+| Complementary to AI Feedback | Phase E's AI Resume Feedback gives subjective critique; ATS Analyzer gives an objective, reproducible score |
+
+### Scoring Breakdown
+
+| Category | Weight | What It Checks |
+|---|---|---|
+| Keywords | 30% | Technical terms present, matched via word-boundary regex (avoids false positives like "go" inside "mongodb") |
+| Formatting | 20% | Contact completeness (name, email, phone, LinkedIn), date consistency, section presence |
+| Readability | 20% | Action verb ratio, weak phrase detection ("helped", "responsible for"), bullet point length |
+| Completeness | 30% | Missing summary, experience, education, skills, LinkedIn |
+
+### Bug Found & Fixed During Testing
+
+**Bug:** Naive `.includes()` keyword matching caused false positives — searching for `"go"` matched inside `"mongodb"`, inflating keyword scores.
+
+**Fix:** Replaced with word-boundary-aware regex (`(?<![a-z0-9])keyword(?![a-z0-9])`) that still allows special-character keywords like `"c++"` and `"node.js"` to match correctly while preventing substring leakage.
+
+### Interview Talking Points
+
+1. **Why not just ask an LLM to score the resume?** An LLM score isn't reproducible — ask it twice, get different numbers. ATS scoring needs to be explainable and consistent so users trust the feedback and can act on it.
+
+2. **How do you avoid false-positive keyword matches?** Word-boundary regex instead of substring `.includes()`. Caught this exact bug in testing: "go" was matching inside "mongodb".
+
+3. **How is the overall score calculated?** Weighted average of 4 sub-scores. Completeness and keywords are weighted highest (30% each) because missing sections and missing terms are the most common reasons real ATS systems reject resumes.
+
+4. **What's the limitation of this approach?** It can't judge actual writing quality or whether an achievement is impressive — only structural/keyword signals. That's why Phase E's AI Resume Feedback exists as a complementary, more subjective layer.
+
+5. **How would you extend this for production?** Add a configurable keyword dictionary per industry, support resume parsing from uploaded PDFs (not just saved resumes), and persist reports to MongoDB for history tracking (planned Phase H).

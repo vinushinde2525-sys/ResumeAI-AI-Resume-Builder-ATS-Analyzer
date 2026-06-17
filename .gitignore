@@ -13,7 +13,7 @@ yarn-error.log*
 dist/
 build/
 .env
-.env.localuuuuuuuuu
+.env.local
 client/node_modules/
 server/node_modules/
 client/dist/

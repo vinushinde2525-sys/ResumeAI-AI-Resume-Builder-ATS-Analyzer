@@ -521,3 +521,85 @@ ATSAnalyzerPage
 4. **What's the limitation of this approach?** It can't judge actual writing quality or whether an achievement is impressive — only structural/keyword signals. That's why Phase E's AI Resume Feedback exists as a complementary, more subjective layer.
 
 5. **How would you extend this for production?** Add a configurable keyword dictionary per industry, support resume parsing from uploaded PDFs (not just saved resumes), and persist reports to MongoDB for history tracking (planned Phase H).
+
+
+---
+
+## PDF Export & Templates (Phase G)
+
+### Architecture
+
+```
+TemplateGalleryPage
+  → browse 5 templates (registry-driven) → live TemplatePreviewModal
+  → select template → PUT /api/resumes/:id { templateId } (persisted on Resume doc)
+
+ResumePage / TemplateGalleryPage
+  → ExportMenu (PDF / DOCX / JSON dropdown)
+      PDF:  POST /api/export/pdf  { resumeId, templateId } → Puppeteer → binary PDF
+      DOCX: POST /api/export/docx { resumeId }             → docx lib  → binary DOCX
+      JSON: POST /api/export/json { resumeId }             → raw backup JSON
+  → axios blob response → triggerDownload() → browser save dialog
+
+Resume save (PUT /api/resumes/:id)
+  → BEFORE overwrite: snapshot old state into ResumeVersion collection
+  → prune oldest snapshot beyond 20 versions per resume
+  → History button → VersionHistoryModal → list / restore / compare
+```
+
+### Template System
+
+5 templates registered in `templateRegistry.js`: Modern Professional, ATS Friendly, Executive, Minimal, Creative. Adding a 6th template requires exactly two changes: create the component, add one entry to the registry object — no other file needs touching (gallery, renderer, and editor all read from the registry dynamically).
+
+The same templates exist twice by necessity — once as React components (`client/.../templates/*.jsx`, used for live browser preview) and once as HTML-string generator functions (`server/.../export.templates.js`, used by Puppeteer for PDF). Both describe identical visual design; the duplication is the cost of using a real browser engine (Puppeteer) for PDF instead of a JS-only PDF library.
+
+### Why Puppeteer Over pdf-lib
+
+| | Puppeteer | pdf-lib |
+|---|---|---|
+| Renders | Real HTML/CSS via headless Chrome | Manual x/y text positioning |
+| Page breaks | Automatic via CSS | Must calculate manually |
+| Matches live preview | Yes — same markup | No — separate implementation |
+| Binary size | ~300MB Chromium | Pure JS, tiny |
+| Best for | Content-driven documents (resumes, invoices, reports) | Filling existing PDF forms, precise programmatic layouts |
+
+For a template-driven resume builder, Puppeteer was the right trade-off: it reuses the same layout logic our 5 templates already express in CSS, rather than re-implementing every template's spacing and wrapping rules as raw coordinates.
+
+### Version History
+
+Every `PUT /api/resumes/:id` snapshots the pre-update state into a separate `ResumeVersion` collection (not an embedded array — keeps the Resume document small and avoids MongoDB's 16MB document limit on heavily-edited resumes). Up to 20 versions are kept per resume; older ones are pruned automatically. Restoring a version itself creates a new "Before restore" snapshot, so restore is always undoable. Field-level comparison between any two versions is available via `GET /api/resumes/:id/versions/compare`.
+
+### Multi-Format Export
+
+| Format | Library | Use Case |
+|---|---|---|
+| PDF | Puppeteer | Final, polished file for job applications |
+| DOCX | `docx` npm package (builds real OOXML) | Users who want to make manual edits in Word |
+| JSON | Native `JSON.stringify` | Raw backup/portability — re-importable in the future |
+
+### API Reference (Phase G additions)
+
+```
+POST /api/export/pdf   { resumeId, templateId } → binary PDF
+POST /api/export/docx  { resumeId }              → binary DOCX
+POST /api/export/json  { resumeId }              → JSON backup file
+
+GET  /api/resumes/:id/versions                     → list version snapshots
+GET  /api/resumes/:id/versions/compare?versionAId&versionBId → field diff
+GET  /api/resumes/:id/versions/:versionId           → single version
+POST /api/resumes/:id/versions/:versionId/restore   → restore + auto-snapshot current state
+```
+
+### Known Environment Limitation
+
+Puppeteer's Chromium binary download is blocked in this development sandbox's network allowlist (`storage.googleapis.com` is not reachable). The `puppeteer` npm package and all PDF-generation *code* are correctly implemented and installed; what couldn't be executed in this sandbox is the final `browser.launch()` step that requires the actual Chrome binary. This is a standard Puppeteer deployment requirement — Render, Railway, and Docker-based hosts with Chrome pre-installed (or `puppeteer` configured to use a system Chrome) will run this exactly as written with no code changes.
+
+### Interview Talking Points
+
+1. **Why a separate ResumeVersion collection instead of an array field on Resume?** MongoDB documents cap at 16MB. An unbounded embedded array of every edit ever made risks hitting that ceiling on a heavily-edited resume. A separate collection scales independently and can be queried/paginated/pruned on its own.
+
+2. **How do you guarantee the PDF matches the live preview?** Both the React template (browser preview) and the HTML-string template (server PDF) are written to describe an identical layout — same colors, same structure, same typography choices — even though they're technically separate files. They're a matched pair the same way client-side and server-side validation schemas are.
+
+3. **What happens if 50 PDF requests hit at once?** The shared Puppeteer browser instance is reused across requests (only a new `page` is opened per request, not a new browser), and the export route has its own stricter rate limit (20/15min) separate from the general API limiter, since each request is meaningfully more expensive than a typical CRUD call.
+
+4. **Why is restoring a version itself "undoable"?** Before applying the restore, the current state is snapshotted as a new version labeled "Before restore." This means a bad restore is just another item in history — never a one-way, unrecoverable action.

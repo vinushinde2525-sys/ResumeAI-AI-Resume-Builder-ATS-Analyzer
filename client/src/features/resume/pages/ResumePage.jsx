@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Briefcase, GraduationCap, Download, Save, ArrowLeft, Pencil, Check } from 'lucide-react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { Briefcase, GraduationCap, Save, ArrowLeft, Pencil, Check, LayoutTemplate, History } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import useResumeEditor, { DEFAULT_RESUME_DATA } from '../hooks/useResumeEditor'
@@ -10,7 +10,9 @@ import SummaryForm from '../components/ResumeEditor/SummaryForm'
 import SkillsForm from '../components/ResumeEditor/SkillsForm'
 import HobbiesForm from '../components/ResumeEditor/HobbiesForm'
 import DynamicArrayForm from '../components/ResumeEditor/DynamicArrayForm'
-import ResumePreview from '../components/ResumePreview/ResumePreview'
+import ResumeTemplateRenderer from '../../templates/components/ResumeTemplateRenderer'
+import ExportMenu from '../../export/components/ExportMenu'
+import VersionHistoryModal from '../components/VersionHistoryModal'
 import Button from '../../../components/ui/Button'
 import Spinner from '../../../components/ui/Spinner'
 import Skeleton from '../../../components/ui/Skeleton'
@@ -34,6 +36,7 @@ const ResumePage = () => {
   // Title editing state
   const [title, setTitle] = useState('Untitled Resume')
   const [editingTitle, setEditingTitle] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
 
   // Load existing resume from API (only in edit mode)
   const { data: existingResume, isLoading: loadingResume } = useResumeDetail(id)
@@ -57,6 +60,7 @@ const ResumePage = () => {
   const { mutate: createResume, isPending: isCreating } = useCreateResume()
   const { mutate: updateResume, isPending: isUpdating } = useUpdateResume(id)
   const isSaving = isCreating || isUpdating
+  const currentTemplateId = existingResume?.templateId || 'modern'
 
   // Load existing data into editor when API returns
   useEffect(() => {
@@ -73,14 +77,6 @@ const ResumePage = () => {
     } else {
       updateResume({ title, data: resumeData })
     }
-  }
-
-  const handlePrint = () => {
-    if (isNew) {
-      toast.error('Save your resume first before exporting')
-      return
-    }
-    window.print()
   }
 
   // Loading skeleton while fetching existing resume
@@ -159,18 +155,34 @@ const ResumePage = () => {
             >
               {isNew ? 'Save Resume' : 'Save Changes'}
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Download}
-              onClick={handlePrint}
-              className="print-hidden"
-            >
-              Export PDF
-            </Button>
+            {!isNew && (
+              <>
+                <Button variant="ghost" size="sm" icon={History} onClick={() => setShowHistory(true)} className="print-hidden">
+                  History
+                </Button>
+                <Link to={`/resumes/${id}/templates`}>
+                  <Button variant="secondary" size="sm" icon={LayoutTemplate} className="print-hidden">
+                    Templates
+                  </Button>
+                </Link>
+                <ExportMenu
+                  resumeId={id}
+                  templateId={currentTemplateId}
+                  filename={title}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {!isNew && (
+        <VersionHistoryModal
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          resumeId={id}
+        />
+      )}
 
       {/* Editor layout */}
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-4 lg:grid-cols-3 lg:p-6">
@@ -230,7 +242,7 @@ const ResumePage = () => {
             Live Preview
           </p>
           <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <ResumePreview ref={resumeRef} data={resumeData} />
+            <ResumeTemplateRenderer templateId={currentTemplateId} data={resumeData} refProp={resumeRef} />
           </div>
         </motion.div>
       </main>

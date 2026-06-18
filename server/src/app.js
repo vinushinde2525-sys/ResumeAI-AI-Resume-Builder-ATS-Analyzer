@@ -7,6 +7,7 @@ import authRoutes from './features/auth/auth.routes.js'
 import resumeRoutes from './features/resume/resume.routes.js'
 import aiRoutes from './features/ai/ai.routes.js'
 import atsRoutes from './features/ats/ats.routes.js'
+import exportRoutes from './features/export/export.routes.js'
 import { env } from './config/env.js'
 import { apiLimiter } from './shared/middleware/rateLimiter.js'
 import errorHandler from './shared/middleware/errorHandler.js'
@@ -52,6 +53,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/resumes', resumeRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/ats', atsRoutes)
+app.use('/api/export', exportRoutes)
 // app.use('/api/resumes', resumeRoutes)  ← Phase C
 // app.use('/api/ai', aiRoutes)           ← Phase E
 // app.use('/api/ats', atsRoutes)         ← Phase F

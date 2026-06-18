@@ -13,6 +13,7 @@ const ResumePage       = lazy(() => import('../features/resume/pages/ResumePage'
 const ResumeListPage   = lazy(() => import('../features/resume/pages/ResumeListPage'))
 const ATSAnalyzerPage  = lazy(() => import('../features/ats/pages/ATSAnalyzerPage'))
 const AIAssistantPage  = lazy(() => import('../features/ai/pages/AIAssistantPage'))
+const TemplateGalleryPage = lazy(() => import('../features/templates/pages/TemplateGalleryPage'))
 const NotFoundPage     = lazy(() => import('../pages/NotFoundPage'))
 
 const PageLoader = () => (
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
       { path: '/resumes',     element: <ResumeListPage /> },
       { path: '/resumes/new', element: <ResumePage /> },
       { path: '/resumes/:id', element: <ResumePage /> },
+      { path: '/resumes/:id/templates', element: <TemplateGalleryPage /> },
       { path: '/ats',         element: <ATSAnalyzerPage /> },
       { path: '/ai',          element: <AIAssistantPage /> },
     ],

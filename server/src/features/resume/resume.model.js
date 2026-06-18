@@ -66,7 +66,7 @@ const resumeSchema = new mongoose.Schema(
     },
     templateId: {
       type: String,
-      default: 'classic',
+      default: 'modern',
     },
     isPublic: {
       type: Boolean,

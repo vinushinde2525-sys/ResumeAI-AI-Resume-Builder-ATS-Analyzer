@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { FileText, LayoutDashboard, BarChart3, Zap, LogOut, User, Menu, X } from 'lucide-react'
+import { FileText, LayoutDashboard, BarChart3, Zap, LogOut, User, Menu, X, Briefcase, LayoutGrid } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { useAuthStore } from '../../app/authStore'
@@ -8,6 +8,8 @@ import { useLogout } from '../../features/auth/hooks/useAuth'
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/resumes',   label: 'Resumes',   icon: FileText },
+  { to: '/jobs',       label: 'Jobs',      icon: Briefcase },
+  { to: '/tracker',    label: 'Tracker',   icon: LayoutGrid },
   { to: '/ats',       label: 'ATS',        icon: BarChart3 },
   { to: '/ai',        label: 'AI',         icon: Zap },
 ]

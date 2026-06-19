@@ -14,6 +14,10 @@ const ResumeListPage   = lazy(() => import('../features/resume/pages/ResumeListP
 const ATSAnalyzerPage  = lazy(() => import('../features/ats/pages/ATSAnalyzerPage'))
 const AIAssistantPage  = lazy(() => import('../features/ai/pages/AIAssistantPage'))
 const TemplateGalleryPage = lazy(() => import('../features/templates/pages/TemplateGalleryPage'))
+const JobsPage           = lazy(() => import('../features/jobs/pages/JobsPage'))
+const JobDetailsPage     = lazy(() => import('../features/jobs/pages/JobDetailsPage'))
+const JobAnalyticsPage   = lazy(() => import('../features/jobs/pages/JobAnalyticsPage'))
+const ApplicationTrackerPage = lazy(() => import('../features/applications/pages/ApplicationTrackerPage'))
 const NotFoundPage     = lazy(() => import('../pages/NotFoundPage'))
 
 const PageLoader = () => (
@@ -82,6 +86,10 @@ export const router = createBrowserRouter([
       { path: '/resumes/new', element: <ResumePage /> },
       { path: '/resumes/:id', element: <ResumePage /> },
       { path: '/resumes/:id/templates', element: <TemplateGalleryPage /> },
+      { path: '/jobs',            element: <JobsPage /> },
+      { path: '/jobs/analytics',  element: <JobAnalyticsPage /> },
+      { path: '/jobs/:id',        element: <JobDetailsPage /> },
+      { path: '/tracker',         element: <ApplicationTrackerPage /> },
       { path: '/ats',         element: <ATSAnalyzerPage /> },
       { path: '/ai',          element: <AIAssistantPage /> },
     ],
